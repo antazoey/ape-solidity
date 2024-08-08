@@ -143,7 +143,7 @@ class SolidityConfig(PluginConfig):
 def _get_flattened_source(path: Path, name: Optional[str] = None) -> str:
     name = name or path.name
     result = f"// File: {name}\n"
-    result += f"{path.read_text().rstrip()}\n"
+    result += f"{path.read_text(encoding='utf8').rstrip()}\n"
     return result
 
 
@@ -515,11 +515,12 @@ class SolidityCompiler(CompilerAPI):
                     # Missing dependencies. Should only get here if dependencies are found
                     # in import-strs but are not installed (not in project or globally).
                     missing_str = ", ".join(dependencies_needed)
-                    raise CompilerError(
-                        f"Missing required dependencies '{missing_str}'. "
-                        "Install them using `dependencies:` "
-                        "in an ape-config.yaml or using the `ape pm install` command."
-                    )
+                    if missing_str:
+                        raise CompilerError(
+                            f"Missing required dependencies '{missing_str}'. "
+                            "Install them using `dependencies:` "
+                            "in an ape-config.yaml or using the `ape pm install` command."
+                        )
 
                     # Otherwise, we are missing project-level source files for some reason.
                     # This would only happen if the user passes in unexpected files outside
@@ -527,10 +528,14 @@ class SolidityCompiler(CompilerAPI):
                     missing_src_str = ", ".join(missing_sources)
                     raise CompilerError(f"Sources '{missing_src_str}' not found in '{pm.name}'.")
 
-            sources = {
-                x: {"content": (pm.path / x).read_text()}
-                for x in sorted(vers_settings["outputSelection"])
-            }
+            sources = {}
+
+            for source_id in sorted(vers_settings["outputSelection"]):
+                path = pm.path / source_id
+                if not path.is_file():
+                    raise CompilerError(f"Missing source file: '{source_id}'.")
+
+                sources[source_id] = {"content": path.read_text(encoding="utf8")}
 
             input_jsons[solc_version] = {
                 "sources": sources,
@@ -1153,7 +1158,7 @@ class SolidityCompiler(CompilerAPI):
         res = remove_imports(res)
         res = process_licenses(res)
         res = remove_version_pragmas(res)
-        pragma = get_first_version_pragma(path.read_text())
+        pragma = get_first_version_pragma(path.read_text(encoding="utf8"))
         res = "\n".join([pragma, res])
 
         # Simple auto-format.
