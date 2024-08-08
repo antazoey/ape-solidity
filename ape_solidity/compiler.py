@@ -531,9 +531,33 @@ class SolidityCompiler(CompilerAPI):
             sources = {}
 
             for source_id in sorted(vers_settings["outputSelection"]):
-                path = pm.path / source_id
+                source_id_path = Path(source_id)
+                path = pm.path / source_id_path
                 if not path.is_file():
-                    raise CompilerError(f"Missing source file: '{source_id}'.")
+                    # The source path is missing and this is an error.
+                    # In the case of missing source files from dependencies,
+                    # we improve the error by parsing the path.
+                    pot_dep_name = None
+                    pot_version_id = None
+                    is_dependency = False
+                    path_parts: list[str] = [path.name]
+                    for parent in source_id_path.parents:
+                        path_parts.append(parent.name)
+                        if parent.parent.name != ".cache":
+                            pot_version_id = parent.name
+                            pot_dep_name = parent.parent.name
+                        else:
+                            is_dependency = True
+                            break
+
+                    message: str
+                    if is_dependency and pot_dep_name is not None and pot_version_id is not None:
+                        dep_source_id = os.path.sep.join(reversed(path_parts[:-2]))
+                        message = f"Missing source '{dep_source_id}' from dependency '{pot_dep_name}@{pot_version_id}'."
+                    else:
+                        message = f"Missing source file: '{source_id}'."
+
+                    raise CompilerError(message)
 
                 sources[source_id] = {"content": path.read_text(encoding="utf8")}
 
